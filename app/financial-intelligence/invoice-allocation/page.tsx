@@ -2,7 +2,7 @@
 import { useState } from "react";
 import MinimalDatePicker from "@/app/components/MinimalDatePicker";
 import InvoiceScanner from "@/app/components/InvoiceScanner";
-// import { exportInvoiceToExcel } from "@/app/lib/excel";
+// Eliminada referencia a exportInvoiceToExcel
 
 // Hide number input spinners for all browsers and unify number input width
 const inputNumberNoArrows = `
@@ -134,7 +134,7 @@ export default function InvoiceAllocationPage() {
             )}
           </div>
           <div className="flex flex-col items-end justify-end">
-            {/* Botón de exportación eliminado temporalmente */}
+            {/* Botón de exportación eliminado */}
           </div>
         </div>
       </div>

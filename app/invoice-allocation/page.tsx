@@ -831,7 +831,7 @@ export default function InvoiceAllocationPage() {
                             {invoice.items.map((item, idx) => (
                               <tr key={item.id} className="border-b border-gray-100">
                                 <td className="p-2 text-xs text-gray-500">{idx + 1}</td>
-                                <td className="p-2 text-sm text-gray-900">{item.product_service || item.product_name || '-'}</td>
+                                <td className="p-2 text-sm text-gray-900">{item.product_service || '-'}</td>
                                 <td className="p-2 text-center text-sm text-gray-900">{item.quantity || '-'}</td>
                                 <td className="p-2 text-right text-sm text-gray-900">${(item.rate || 0).toFixed(2)}</td>
                                 <td className="p-2 text-right text-sm font-medium text-gray-900">

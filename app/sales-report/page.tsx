@@ -8,7 +8,6 @@ import ExpenseTable from '@/app/components/ExpenseTable'
 import TipReport from '@/app/components/TipReport'
 import OtherFeeTable from '@/app/components/OtherFeeTable'
 import { getTucciEmployeesForSales } from '@/app/lib/tucciBrigade'
-import { exportEmployeeTipReport } from '@/app/lib/excel'
 import { generateTipReport } from '@/app/lib/tips'
 import { restaurants } from '@/app/lib/restaurants'
 import { supabase } from '@/app/lib/supabase'
@@ -241,8 +240,7 @@ export default function SalesReportPage() {
 
 
   const handleExportEmployeeReport = () => {
-    const tipReport = generateTipReport(salesData, distributionMethod)
-    exportEmployeeTipReport(eventInfo, tipReport.distribution, totals, salesData)
+    // Función de exportación eliminada
   }
 
   const handleSubmitClick = () => {
@@ -620,12 +618,7 @@ export default function SalesReportPage() {
               <p className="text-lg font-semibold text-gray-600 mt-1">{activeRestaurant}</p>
             )}
           </div>
-          <button 
-            onClick={handleExportToExcel}
-            className="px-4 py-2 bg-gray-900 text-white border-2 border-gray-800 rounded font-semibold text-sm hover:bg-gray-800 transition"
-          >
-            EXPORT TO EXCEL
-          </button>
+          {/* Botón de exportación eliminado */}
         </div>
 
         <div className="space-y-6">
@@ -814,12 +807,7 @@ export default function SalesReportPage() {
                 <h2 className="text-xl font-bold text-black">
                   GRATUITY DISTRIBUTION
                 </h2>
-                <button 
-                  onClick={handleExportEmployeeReport}
-                  className="px-4 py-2 bg-gray-900 text-white border-2 border-gray-800 rounded font-semibold text-sm hover:bg-gray-800 transition"
-                >
-                  EMPLOYEES REPORT EXPORT
-                </button>
+                {/* Botón de exportación eliminado */}
               </div>
               <div className="mb-4">
                 <label className="text-sm font-semibold text-black mr-4">
