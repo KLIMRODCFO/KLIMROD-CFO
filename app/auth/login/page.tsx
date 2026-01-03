@@ -176,20 +176,6 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Demo Credentials */}
-            {isLogin && (
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-xs font-semibold text-blue-900 mb-2">
-                  📧 Demo Credentials:
-                </p>
-                <p className="text-xs text-blue-800">
-                  Email: <code className="bg-white px-2 py-1 rounded">admin@klimrod.com</code>
-                </p>
-                <p className="text-xs text-blue-800">
-                  Password: <code className="bg-white px-2 py-1 rounded">123456</code>
-                </p>
-              </div>
-            )}
           </div>
         </div>
 
