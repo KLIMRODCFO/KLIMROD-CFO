@@ -93,6 +93,7 @@ export default function HRPage() {
         const simpleEmp = empData.map((e: any) => ({
           id: e.id,
           name: e.name,
+          email: e.email || '',
           position: e.position
         }))
         setEmployees(simpleEmp)
