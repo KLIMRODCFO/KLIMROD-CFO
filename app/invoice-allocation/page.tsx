@@ -30,6 +30,8 @@ interface Invoice {
   attachment_url?: string
   created_by?: string
   notes?: string
+  tax?: number
+  shipping?: number
   // Legacy fields for backward compatibility
   delivery_number?: string
   description?: string
