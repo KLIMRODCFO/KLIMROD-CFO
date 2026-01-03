@@ -2,7 +2,7 @@
 import { useState } from "react";
 import MinimalDatePicker from "@/app/components/MinimalDatePicker";
 import InvoiceScanner from "@/app/components/InvoiceScanner";
-import { exportInvoiceToExcel } from "@/app/lib/excel";
+// import { exportInvoiceToExcel } from "@/app/lib/excel";
 
 // Hide number input spinners for all browsers and unify number input width
 const inputNumberNoArrows = `

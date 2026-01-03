@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Event, SalesRow } from '@/app/lib/types'
 import SalesTable from '@/app/components/SalesTable'
 import TipReport from '@/app/components/TipReport'
-import { calculateTotals, exportToExcel } from '@/app/lib/excel'
+import { calculateTotals } from '@/app/lib/excel'
 
 function EventDetailsContent() {
   const searchParams = useSearchParams()
