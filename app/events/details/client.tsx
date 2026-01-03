@@ -173,6 +173,7 @@ function EventDetailsContent() {
               onAddRow={addRow}
               onDeleteRow={deleteRow}
               totals={totals}
+              employees={[]}
             />
             <div className="mt-8 flex gap-4">
               <button
