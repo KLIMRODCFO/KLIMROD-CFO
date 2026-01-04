@@ -1,4 +1,5 @@
-'use client'
+
+'use client';
 
 import { useState, useEffect } from 'react'
 import AuthenticatedLayout from '@/app/components/AuthenticatedLayout'
@@ -7,7 +8,7 @@ import SalesTable from '@/app/components/SalesTable'
 import ExpenseTable from '@/app/components/ExpenseTable'
 import TipReport from '@/app/components/TipReport'
 import OtherFeeTable from '@/app/components/OtherFeeTable'
-import { getTucciEmployeesForSales } from '@/app/lib/tucciBrigade'
+// import { getTucciEmployeesForSales } from '@/app/lib/tucciBrigade'
 import { generateTipReport } from '@/app/lib/tips'
 import { restaurants } from '@/app/lib/restaurants'
 import { supabase } from '@/app/lib/supabase'
@@ -28,11 +29,66 @@ const EVENT_OPTIONS = [
 ]
 
 export default function SalesReportPage() {
+  // ...existing code...
   const [salesData, setSalesData] = useState<SalesRow[]>([])
   const [expenseData, setExpenseData] = useState<ExpenseRow[]>([])
   const [otherFeeData, setOtherFeeData] = useState<Array<{employee: string, position: string}>>([])
   const [distributionMethod, setDistributionMethod] = useState<'percentage' | 'equal'>('percentage')
-  const [employees, setEmployees] = useState<Array<{id: string, name: string, position: string}>>([])
+  const [employees, setEmployees] = useState<Array<{id: string, name: string, position: string, department?: string}>>([])
+  const [managers, setManagers] = useState<Array<{id: string, name: string}>>([])
+
+  // Solo FOH para dropdowns y Gratuity Details
+  const fohEmployees = employees.filter(e => (e.department && e.department.toUpperCase() === 'FOH'));
+  // State for the new Event Summary textarea
+  const [eventSummary, setEventSummary] = useState('');
+    // PERFORMANCE REPORT STATE AND HELPERS (must be after employees is defined)
+    const [performanceRows, setPerformanceRows] = useState([
+      { department: '', employee: '', position: '', report: '', note: false }
+    ]);
+    // Get unique departments from employees (treat MANAGER as MANAGEMENT)
+    // Siempre mostrar FOH, BOH y MANAGEMENT aunque no haya empleados cargados
+    // Lista completa de departamentos según Quick Onboarding
+    const baseDepartments = ['FOH', 'BOH', 'MANAGEMENT', 'ADMINISTRATIVE'];
+    const foundDepartments = employees
+      .map(e => {
+        if (e.position && e.position.toUpperCase() === 'MANAGER') return 'MANAGEMENT';
+        if (e.department) return e.department.toUpperCase();
+        return null;
+      })
+      .filter((d): d is string => Boolean(d));
+    const departmentOptions: string[] = Array.from(new Set([...baseDepartments, ...foundDepartments]));
+    // Filter employees by department
+    const getEmployeesByDepartment = (dept: string) => {
+      if (dept === 'MANAGEMENT') {
+        return employees.filter(e => e.position && e.position.toUpperCase() === 'MANAGER');
+      }
+      if (dept === 'ADMINISTRATIVE') {
+        return employees.filter(e => e.department && e.department.toUpperCase() === 'ADMINISTRATIVE');
+      }
+      return employees.filter(e => (e.department && e.department.toUpperCase() === dept));
+    };
+    const handlePerformanceChange = (idx: number, field: string, value: any) => {
+      setPerformanceRows(prev => prev.map((row, i) => {
+        if (i !== idx) return row;
+        let updated = { ...row, [field]: value };
+        // Si se selecciona un empleado, autocompletar el campo position
+        if (field === 'employee') {
+          const emp = employees.find(e => e.name === value);
+          if (emp && emp.position) {
+            updated.position = emp.position;
+          }
+      }
+        return updated;
+      }));
+    };
+    const handleAddPerformanceRow = () => {
+      setPerformanceRows(prev => [...prev, { department: '', employee: '', position: '', report: '', note: false }]);
+    };
+  // ...existing code...
+  // (Remove the old Event Summary and Night Summary blocks from the top)
+    const handleRemovePerformanceRow = (idx: number) => {
+      setPerformanceRows(prev => prev.filter((_, i) => i !== idx));
+    };
   const [showSecurityModal, setShowSecurityModal] = useState(false)
   const [securityPassword, setSecurityPassword] = useState('')
   const [activeRestaurant, setActiveRestaurant] = useState<string>('')
@@ -64,28 +120,56 @@ export default function SalesReportPage() {
   })
 
   useEffect(() => {
-    // Load TUCCI employees
-    const tucciEmp = getTucciEmployeesForSales()
-    setEmployees(tucciEmp)
+    // Load FOH employees from Supabase
+    const loadEmployees = async () => {
+      const restaurantId = localStorage.getItem('active_restaurant_id') || 'default';
+      console.log('[SALES REPORT] restaurantId:', restaurantId);
+      // TODOS LOS EMPLEADOS ACTIVOS DEL RESTAURANTE
+      const { data, error } = await supabase
+        .from('MASTER_EMPLOYEE_DIRECTORY')
+        .select('id, employee_name, position, department, status, restaurant_id')
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'ACTIVE')
+        .order('employee_name', { ascending: true });
+      console.log('[SALES REPORT] empleados recibidos:', data, 'error:', error);
+      if (!error && data) {
+        setEmployees(data.map((e: any) => ({ id: e.id, name: e.employee_name, position: e.position, department: e.department })));
+      } else {
+        setEmployees([]);
+      }
+      // MANAGERS
+      const { data: mgrs, error: mgrsError } = await supabase
+        .from('MASTER_EMPLOYEE_DIRECTORY')
+        .select('id, employee_name')
+        .eq('restaurant_id', restaurantId)
+        .eq('department', 'MANAGEMENT')
+        .eq('status', 'ACTIVE')
+        .order('employee_name', { ascending: true });
+      if (!mgrsError && mgrs) {
+        setManagers(mgrs.map((m: any) => ({ id: m.id, name: m.employee_name })));
+      } else {
+        setManagers([]);
+      }
+    };
+    loadEmployees();
 
     // Load active restaurant
     const updateActiveRestaurant = () => {
-      const stored = localStorage.getItem('active_restaurant_id')
+      const stored = localStorage.getItem('active_restaurant_id');
       if (stored) {
-        const restaurant = restaurants.find(r => r.id === stored)
+        const restaurant = restaurants.find(r => r.id === stored);
         if (restaurant) {
-          setActiveRestaurant(restaurant.name)
+          setActiveRestaurant(restaurant.name);
         }
       }
-    }
-    updateActiveRestaurant()
+    };
+    updateActiveRestaurant();
 
-    // Listen for changes
-    window.addEventListener('restaurant-changed', updateActiveRestaurant)
+    window.addEventListener('restaurant-changed', updateActiveRestaurant);
     return () => {
-      window.removeEventListener('restaurant-changed', updateActiveRestaurant)
-    }
-  }, [])
+      window.removeEventListener('restaurant-changed', updateActiveRestaurant);
+    };
+  }, []);
 
   useEffect(() => {
     const storedInfo = localStorage.getItem('sales_event_info')
@@ -227,11 +311,11 @@ export default function SalesReportPage() {
       : (typeof value === 'string' ? parseFloat(value) || 0 : value)
     updated[index] = { ...updated[index], [field]: finalValue }
     
-    // Auto-fill position when employee is selected
+    // Auto-fill position when employee is selected, but keep editable
     if (field === 'employee' && typeof value === 'string') {
-      const emp = employees.find(e => e.name === value)
+      const emp = employees.find(e => e.name === value);
       if (emp) {
-        updated[index] = { ...updated[index], position: emp.position }
+        updated[index] = { ...updated[index], position: emp.position };
       }
     }
     
@@ -263,209 +347,10 @@ export default function SalesReportPage() {
     setSecurityPassword('')
 
     try {
-      console.log('🔄 Saving event to Supabase...')
-      
-      const activeRestaurantId = localStorage.getItem('active_restaurant_id') || 'default'
-      const tipReport = generateTipReport(salesData, distributionMethod)
-      
-      // Verificar conexión a Supabase
-      console.log('🔍 Testing Supabase connection...')
-      const { data: testData, error: testError } = await supabase.from('events').select('id').limit(1)
-      if (testError) {
-        console.error('⚠️ Supabase connection test failed:', testError)
-        console.error('Error code:', testError.code)
-        console.error('Error message:', testError.message)
-        console.error('Error hint:', testError.hint)
-        alert(`Database connection error: ${testError.message}\nCode: ${testError.code || 'unknown'}`)
-        return
-      }
-      console.log('✅ Supabase connection OK, table exists')
-      
-      // Prepare data object
-      const eventDataToInsert = {
-          date: eventInfo.date,
-          day: eventInfo.day,
-          year: new Date(eventInfo.date).getFullYear(),
-          event_name: eventInfo.eventName,
-          shift: eventInfo.shift,
-          manager: eventInfo.manager,
-          // Sales totals
-          total_net_sales: totals.totalNetSales,
-          total_cash_sales: totals.totalCashSales,
-          total_cc_sales: totals.totalCcSales,
-          total_cc_gratuity: totals.totalCcGratuity,
-          total_cash_gratuity: totals.totalCashGratuity,
-          total_gratuity: totals.totalGratuity,
-          total_points: totals.totalPoints,
-          // Expense totals
-          total_expenses: expenseTotals.totalExpenses,
-          expense_cash: expenseTotals.totalCash,
-          expense_check: expenseTotals.totalCheck,
-          expense_business: expenseTotals.totalBusiness,
-          expense_employee: expenseTotals.totalEmployee,
-          expense_refunded: expenseTotals.totalRefunded,
-          // Calculated fields
-          house_cash: totals.totalCashSales - expenseTotals.totalCash,
-          other_fee: eventInfo.otherFee,
-          // Tip distribution (CRITICAL for payroll)
-          tip_distribution: tipReport.distribution,
-          // Metadata
-          notes: eventInfo.notes,
-          distribution_method: distributionMethod,
-          status: 'closed',
-          closed_at: new Date().toISOString(),
-          closed_by: eventInfo.manager,
-          restaurant_id: activeRestaurantId,
-          user_id: '00000000-0000-0000-0000-000000000000'
-      }
-
-      console.log('📝 Data to insert:', JSON.stringify(eventDataToInsert, null, 2))
-
-      // 1. Create Event in Supabase with ALL data
-      const { data: eventData, error: eventError } = await supabase
-        .from('events')
-        .insert([eventDataToInsert])
-        .select()
-        .single()
-
-      if (eventError) {
-        console.error('❌ Error creating event:', eventError)
-        console.error('Error code:', eventError.code)
-        console.error('Error message:', eventError.message)
-        console.error('Error hint:', eventError.hint)
-        console.error('Error details:', eventError.details)
-        console.error('Full error object:', JSON.stringify(eventError, null, 2))
-        alert(`Error saving event: ${eventError.message || 'Unknown error'}\nCode: ${eventError.code || 'unknown'}\nCheck console for full details.`)
-        return
-      }
-
-      console.log('✅ Event created:', eventData)
-      const eventId = eventData.id
-
-      // 2. Save Sales Reports with event context
-      if (salesData.length > 0) {
-        const salesToSave = salesData
-          .filter(row => row.employee && row.employee.trim() !== '')
-          .map(row => ({
-            event_id: eventId,
-            employee: row.employee,
-            position: row.position,
-            net_sales: row.netSales || 0,
-            cash_sales: row.cashSales || 0,
-            cc_sales: row.ccSales || 0,
-            cc_gratuity: row.ccGratuity || 0,
-            cash_gratuity: row.cashGratuity || 0,
-            points: row.points || 0,
-            // Event context for easy queries
-            event_date: eventInfo.date,
-            event_day: eventInfo.day,
-            event_name: eventInfo.eventName,
-            shift: eventInfo.shift,
-            manager: eventInfo.manager,
-            restaurant_id: activeRestaurantId,
-            user_id: '00000000-0000-0000-0000-000000000000'
-          }))
-
-        if (salesToSave.length > 0) {
-          const { error: salesError } = await supabase
-            .from('sales_reports')
-            .insert(salesToSave)
-
-          if (salesError) {
-            console.error('❌ Error saving sales:', salesError)
-          } else {
-            console.log('✅ Sales saved:', salesToSave.length, 'rows')
-          }
-        }
-      }
-
-      // 3. Save Expenses
-      if (expenseData.length > 0) {
-        const expensesToSave = expenseData
-          .filter(row => row.expenseName && row.expenseName.trim() !== '')
-          .map(row => ({
-            event_id: eventId,
-            expense_name: row.expenseName,
-            amount: row.amount || 0,
-            payment_method: row.paymentMethod,
-            paid_by: row.paidBy,
-            employee_name: row.employeeName,
-            refunded: row.refunded || false,
-            restaurant_id: activeRestaurantId,
-            user_id: '00000000-0000-0000-0000-000000000000'
-          }))
-
-        if (expensesToSave.length > 0) {
-          const { error: expensesError } = await supabase
-            .from('expenses')
-            .insert(expensesToSave)
-
-          if (expensesError) {
-            console.error('❌ Error saving expenses:', expensesError)
-          } else {
-            console.log('✅ Expenses saved:', expensesToSave.length, 'rows')
-          }
-        }
-      }
-
-      // 4. Save Other Fees
-      if (otherFeeData.length > 0) {
-        const feesToSave = otherFeeData
-          .filter(row => row.employee && row.employee.trim() !== '')
-          .map(row => ({
-            event_id: eventId,
-            employee: row.employee,
-            position: row.position,
-            restaurant_id: activeRestaurantId,
-            user_id: '00000000-0000-0000-0000-000000000000'
-          }))
-
-        if (feesToSave.length > 0) {
-          const { error: feesError } = await supabase
-            .from('other_fees')
-            .insert(feesToSave)
-
-          if (feesError) {
-            console.error('❌ Error saving other fees:', feesError)
-          } else {
-            console.log('✅ Other fees saved:', feesToSave.length, 'rows')
-          }
-        }
-      }
-
-      // 5. Save Tip Distributions (CRITICAL for payroll)
-      if (tipReport.distribution && tipReport.distribution.length > 0) {
-        const otherFeePerPerson = eventInfo.otherFee / (otherFeeData.filter(f => f.employee).length || 1)
-        
-        const distributionsToSave = tipReport.distribution.map((dist: any) => ({
-          event_id: eventId,
-          employee: dist.employee,
-          position: dist.position,
-          points: dist.points || 0,
-          percentage: dist.percentage || 0,
-          tip_amount: dist.tipAmount || 0,
-          net_sales: dist.netSales || 0,
-          cc_gratuity: dist.ccGratuity || 0,
-          cash_gratuity: dist.cashGratuity || 0,
-          other_fee_amount: otherFeeData.some(f => f.employee === dist.employee) ? otherFeePerPerson : 0,
-          total_earned: (dist.tipAmount || 0) + (otherFeeData.some(f => f.employee === dist.employee) ? otherFeePerPerson : 0),
-          restaurant_id: activeRestaurantId,
-          user_id: '00000000-0000-0000-0000-000000000000'
-        }))
-
-        const { error: distError } = await supabase
-          .from('tip_distributions')
-          .insert(distributionsToSave)
-
-        if (distError) {
-          console.error('❌ Error saving tip distributions:', distError)
-        } else {
-          console.log('✅ Tip distributions saved:', distributionsToSave.length, 'employees')
-        }
-      }
-
-      // 5. Also save to localStorage for closed_events page (backward compatibility)
-      const reportId = `${eventInfo.date}_${eventInfo.eventName.replace(/\s/g, '_')}_${Date.now()}`
+      // Guardar evento en localStorage (puedes mantener la lógica de Supabase si la necesitas)
+      const activeRestaurantId = localStorage.getItem('active_restaurant_id') || 'default';
+      const tipReport = generateTipReport(salesData, distributionMethod);
+      const reportId = `${eventInfo.date}_${eventInfo.eventName.replace(/\s/g, '_')}_${Date.now()}`;
       const closedEvent = {
         id: reportId,
         timestamp: new Date().toISOString(),
@@ -478,29 +363,23 @@ export default function SalesReportPage() {
         totals: totals,
         expenseTotals: expenseTotals,
         tipDistribution: tipReport.distribution,
-        distributionMethod: distributionMethod,
-        supabaseEventId: eventId
-      }
+        distributionMethod: distributionMethod
+      };
+      const existingEvents = localStorage.getItem('closed_events');
+      const events = existingEvents ? JSON.parse(existingEvents) : [];
+      events.push(closedEvent);
+      localStorage.setItem('closed_events', JSON.stringify(events));
 
-      const existingEvents = localStorage.getItem('closed_events')
-      const events = existingEvents ? JSON.parse(existingEvents) : []
-      events.push(closedEvent)
-      localStorage.setItem('closed_events', JSON.stringify(events))
+      alert(`Event "${eventInfo.eventName}" has been closed and saved successfully!`);
 
-      alert(`Event "${eventInfo.eventName}" has been closed and saved successfully!\n\nSaved to Supabase ✅`)
-      
-      // Clear all data for new report
-      localStorage.removeItem('sales_default')
-      localStorage.removeItem('expense_default')
-      localStorage.removeItem('other_fee_data')
-      localStorage.removeItem('sales_event_info')
-      
-      // Reload page to start fresh
-      window.location.reload()
-
+      // Limpiar datos para nuevo reporte
+      localStorage.removeItem('sales_default');
+      localStorage.removeItem('expense_default');
+      localStorage.removeItem('other_fee_data');
+      localStorage.removeItem('sales_event_info');
     } catch (error) {
-      console.error('❌ Unexpected error:', error)
-      alert('Error saving event. Please check the console.')
+      console.error('❌ Unexpected error:', error);
+      alert('Error saving event. Please check the console.');
     }
   }
 
@@ -610,7 +489,7 @@ export default function SalesReportPage() {
 
   return (
     <AuthenticatedLayout>
-      <div className="w-full">
+      <div id="sales-report-content" className="w-full">
         <div className="flex justify-between items-center mb-2 px-6">
           <div>
             <h1 className="text-3xl font-bold text-black">SALES REPORT</h1>
@@ -618,7 +497,8 @@ export default function SalesReportPage() {
               <p className="text-lg font-semibold text-gray-600 mt-1">{activeRestaurant}</p>
             )}
           </div>
-          {/* Botón de exportación eliminado */}
+                                              </div>
+                                              {/* Removed Event Summary and Night Summary */}
         </div>
 
         <div className="space-y-6">
@@ -626,36 +506,37 @@ export default function SalesReportPage() {
             <h2 className="text-xl font-bold text-black mb-4">
               GENERAL INFORMATION
             </h2>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Event Information Table */}
               <table className="w-full text-sm border-2 border-gray-800 rounded overflow-hidden">
                 <tbody>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">RESTAURANT</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white font-bold">
+                  <tr style={{borderBottom:'1px solid #232b38'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-r" style={{background:'#151c26', borderRight:'1px solid #232b38'}}>RESTAURANT</td>
+                    <td className="px-4 py-2 text-gray-900 bg-white font-bold text-center">
                       {activeRestaurant || 'NO RESTAURANT SELECTED'}
                     </td>
                   </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">DATE</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white">
+                  <tr style={{borderBottom:'1px solid #232b38'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-r" style={{background:'#151c26', borderRight:'1px solid #232b38'}}>DATE</td>
+                    <td className="px-4 py-2 text-gray-900 bg-white text-center">
                       <input
                         type="date"
                         name="date"
                         value={eventInfo.date}
                         onChange={handleEventChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase"
+                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase text-center"
+                        style={{ textAlign: 'center', textAlignLast: 'center', justifyContent: 'center', alignItems: 'center', display: 'flex' }}
                       />
                     </td>
                   </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">DAY</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white">
+                  <tr style={{borderBottom:'1px solid #232b38'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-r" style={{background:'#151c26', borderRight:'1px solid #232b38'}}>DAY</td>
+                    <td className="px-4 py-2 text-gray-900 bg-white text-center">
                       <select
                         name="day"
                         value={eventInfo.day}
                         onChange={handleEventChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase"
+                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase text-center"
                       >
                         <option value="">SELECT DAY</option>
                         <option value="MONDAY">MONDAY</option>
@@ -668,14 +549,14 @@ export default function SalesReportPage() {
                       </select>
                     </td>
                   </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">EVENT</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white">
+                  <tr style={{borderBottom:'1px solid #232b38'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-r" style={{background:'#151c26', borderRight:'1px solid #232b38'}}>EVENT</td>
+                    <td className="px-4 py-2 text-gray-900 bg-white text-center">
                       <select
                         name="eventName"
                         value={eventInfo.eventName}
                         onChange={handleEventChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase"
+                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase text-center"
                       >
                         <option value="">SELECT EVENT</option>
                         {EVENT_OPTIONS.map((opt) => (
@@ -684,14 +565,14 @@ export default function SalesReportPage() {
                       </select>
                     </td>
                   </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">SHIFT</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white">
+                  <tr style={{borderBottom:'1px solid #232b38'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-r" style={{background:'#151c26', borderRight:'1px solid #232b38'}}>SHIFT</td>
+                    <td className="px-4 py-2 text-gray-900 bg-white text-center">
                       <select
                         name="shift"
                         value={eventInfo.shift}
                         onChange={handleEventChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase"
+                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase text-center"
                       >
                         <option value="">SELECT SHIFT</option>
                         <option value="LUNCH">LUNCH</option>
@@ -701,28 +582,32 @@ export default function SalesReportPage() {
                       </select>
                     </td>
                   </tr>
-                  <tr>
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">MANAGER</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white">
-                      <input
-                        type="text"
+                  <tr style={{borderBottom:'1px solid #232b38'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-r" style={{background:'#151c26', borderRight:'1px solid #232b38'}}>MANAGER</td>
+                    <td className="px-4 py-2 text-gray-900 bg-white text-center">
+                      <select
                         name="manager"
                         value={eventInfo.manager}
                         onChange={handleEventChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase"
-                        placeholder="MANAGER NAME"
-                      />
+                        className="w-full px-3 py-2 border border-gray-300 rounded uppercase text-center"
+                        required
+                      >
+                        <option value="">SELECT MANAGER</option>
+                        {managers.map((mgr) => (
+                          <option key={mgr.id} value={mgr.name}>{mgr.name}</option>
+                        ))}
+                      </select>
                     </td>
                   </tr>
-                  <tr>
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">OTHER FEE</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white">
+                  <tr style={{borderBottom:'1px solid #232b38'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-r" style={{background:'#151c26', borderRight:'1px solid #232b38'}}>OTHER FEE</td>
+                    <td className="px-4 py-2 text-gray-900 bg-white text-center">
                       <input
                         type="number"
                         name="otherFee"
                         value={eventInfo.otherFee || ''}
                         onChange={handleEventChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="0.00"
                         step="0.01"
                       />
@@ -730,60 +615,47 @@ export default function SalesReportPage() {
                   </tr>
                 </tbody>
               </table>
-
-              {/* Totals Table */}
-              <table className="w-full text-sm border-2 border-gray-800 rounded overflow-hidden">
+              {/* Totals Table (Right Side) - estilo exacto */}
+              <table className="w-full text-sm border-separate border-spacing-0 rounded overflow-hidden" style={{background:'#151c26'}}>
                 <tbody>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">NET SALES</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white text-right font-bold">
-                      ${totals.totalNetSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
+                  <tr style={{background:'#151c26'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-b border-gray-700" style={{background:'#151c26'}}>NET SALES</td>
+                    <td className="px-4 py-2 text-right border-b border-gray-700 bg-white text-black">${totals.totalNetSales.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                   </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">CASH SALES</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white text-right font-bold">
-                      ${totals.totalCashSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
+                  <tr style={{background:'#151c26'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-b border-gray-700" style={{background:'#151c26'}}>CASH SALES</td>
+                    <td className="px-4 py-2 text-right border-b border-gray-700 bg-white text-black">${totals.totalCashSales.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                   </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">CASH EXPENSES</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white text-right font-bold">
-                      ${expenseTotals.totalCash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
+                  <tr style={{background:'#151c26'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-b border-gray-700" style={{background:'#151c26'}}>CASH EXPENSES</td>
+                    <td className="px-4 py-2 text-right border-b border-gray-700 bg-white text-black">${expenseTotals.totalCash.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                   </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-600 border-r border-gray-800">HOUSE CASH</td>
-                    <td className="px-4 py-2 text-gray-900 bg-gray-100 text-right font-bold">
-                      ${(totals.totalCashSales - expenseTotals.totalCash).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
-                  </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">CC SALES</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white text-right font-bold">
-                      ${totals.totalCcSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
-                  </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">CC GRATUITY</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white text-right font-bold">
-                      ${totals.totalCcGratuity.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
-                  </tr>
-                  <tr className="border-b border-gray-800">
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">CASH GRATUITY</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white text-right font-bold">
-                      ${totals.totalCashGratuity.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
+                  <tr style={{background:'#d1d5db'}}>
+                    <td className="px-4 py-2 font-semibold text-black border-b border-gray-300" style={{background:'#d1d5db'}}>HOUSE CASH</td>
+                    <td className="px-4 py-2 text-right border-b border-gray-300 text-black" style={{background:'#d1d5db'}}>${(totals.totalCashSales - expenseTotals.totalCash).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                   </tr>
                   <tr>
-                    <td className="px-4 py-2 font-semibold text-white bg-gray-900 border-r border-gray-800">TOTAL POINTS</td>
-                    <td className="px-4 py-2 text-gray-900 bg-white text-right font-bold">
-                      {totals.totalPoints.toLocaleString('en-US')}
-                    </td>
+                    <td colSpan={2} className="p-0"><div style={{borderTop:'1px solid #d1d5db', width:'100%'}}></div></td>
+                  </tr>
+                  <tr style={{background:'#151c26'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-b border-gray-700" style={{background:'#151c26'}}>CC SALES</td>
+                    <td className="px-4 py-2 text-right border-b border-gray-700 bg-white text-black">${totals.totalCcSales.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                  </tr>
+                  <tr style={{background:'#151c26'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-b border-gray-700" style={{background:'#151c26'}}>CC GRATUITY</td>
+                    <td className="px-4 py-2 text-right border-b border-gray-700 bg-white text-black">${totals.totalCcGratuity.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                  </tr>
+                  <tr style={{background:'#151c26'}}>
+                    <td className="px-4 py-2 font-semibold text-white border-b border-gray-700" style={{background:'#151c26'}}>CASH GRATUITY</td>
+                    <td className="px-4 py-2 text-right border-b border-gray-700 bg-white text-black">${totals.totalCashGratuity.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                  </tr>
+                  <tr style={{background:'#151c26'}}>
+                    <td className="px-4 py-2 font-semibold text-white" style={{background:'#151c26'}}>TOTAL POINTS</td>
+                    <td className="px-4 py-2 text-right bg-white text-black">{totals.totalPoints}</td>
                   </tr>
                 </tbody>
               </table>
+            </div>
             </div>
           </div>
 
@@ -797,7 +669,7 @@ export default function SalesReportPage() {
               onAddRow={handleAddRow}
               onDeleteRow={handleRemoveRow}
               totals={totals}
-              employees={employees}
+              employees={fohEmployees}
             />
           </div>
 
@@ -807,22 +679,52 @@ export default function SalesReportPage() {
                 <h2 className="text-xl font-bold text-black">
                   GRATUITY DISTRIBUTION
                 </h2>
-                {/* Botón de exportación eliminado */}
               </div>
               <div className="mb-4">
-                <label className="text-sm font-semibold text-black mr-4">
-                  DISTRIBUTION METHOD
-                </label>
-                <select
-                  value={distributionMethod}
-                  onChange={(e) => setDistributionMethod(e.target.value as 'percentage' | 'equal')}
-                  className="px-3 py-2 border border-gray-300 rounded"
-                >
-                  <option value="percentage">BY POINTS</option>
-                  <option value="equal">EQUAL PARTS</option>
-                </select>
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center">
+                    <label className="text-sm font-semibold text-black mr-4">
+                      DISTRIBUTION METHOD
+                    </label>
+                  </div>
+                  <button
+                    className="ml-4 px-4 py-2 bg-black text-white rounded font-semibold text-sm shadow hover:bg-gray-900 transition-all"
+                    onClick={async () => {
+                      // Exportar Gratuity Distribution a Excel
+                      if (typeof window === 'undefined') return;
+                      let XLSX = window.XLSX;
+                      if (!XLSX) {
+                        XLSX = await import('xlsx');
+                      }
+                      // Calcular la distribución real de propinas (gratuity distribution)
+                      const { generateTipReport } = await import('@/app/lib/tips');
+                      const fohRows = salesData.filter(row => {
+                        const emp = employees.find(e => e.name === row.employee);
+                        return emp && emp.department && emp.department.toUpperCase() === 'FOH';
+                      });
+                      const report = generateTipReport(fohRows, distributionMethod);
+                      const data = report.distribution.map(row => ({
+                        Employee: row.employee,
+                        'Total Tips': row.tips,
+                        'CC Gratuity': row.ccGratuity,
+                        'Cash Gratuity': row.cashGratuity
+                      }));
+                      const ws = XLSX.utils.json_to_sheet(data);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, 'Gratuity Distribution');
+                      XLSX.writeFile(wb, 'gratuity-distribution.xlsx');
+                    }}
+                  >
+                    EXPORT GRATUITY DISTRIBUTION
+                  </button>
+                </div>
               </div>
-              <TipReport sales={salesData} distributionMethod={distributionMethod} />
+              <div id="gratuity-distribution-section">
+                <TipReport sales={salesData.filter(row => {
+                  const emp = employees.find(e => e.name === row.employee);
+                  return emp && emp.department && emp.department.toUpperCase() === 'FOH';
+                })} distributionMethod={distributionMethod} />
+              </div>
             </div>
           )}
 
@@ -854,73 +756,173 @@ export default function SalesReportPage() {
             />
           </div>
 
+          {/* PERFORMANCE REPORT */}
           <div className="bg-white rounded p-6">
-            <h2 className="text-xl font-bold text-black mb-4">
-              NOTES
-            </h2>
-            <textarea
-              name="notes"
-              value={eventInfo.notes}
-              onChange={(e) => setEventInfo(prev => ({ ...prev, notes: e.target.value }))}
-              className="w-full px-4 py-3 border border-gray-300 rounded text-sm min-h-[150px] uppercase"
-              placeholder="MANAGER NOTES - ANY COMMENTS OR OBSERVATIONS ABOUT THE SERVICE..."
-            />
-          </div>
-
-          <div className="flex justify-center py-6">
-            <button 
-              onClick={handleSubmitClick}
-              className="px-8 py-3 bg-gray-900 text-white border-2 border-gray-800 rounded font-semibold text-sm hover:bg-gray-800 transition"
-            >
-              SUBMIT & CLOSE EVENT
-            </button>
-          </div>
-        </div>
-
-        {/* Security Modal */}
-        {showSecurityModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-2xl">
-              <h2 className="text-2xl font-bold text-center text-gray-900 mb-2">
-                KLIMROD CFO
-              </h2>
-              <h3 className="text-lg font-semibold text-center text-gray-700 mb-6">
-                SECURITY STEP
-              </h3>
-              <p className="text-sm text-gray-600 mb-4 text-center">
-                Enter manager password to close event
-              </p>
-              <input
-                type="password"
-                value={securityPassword}
-                onChange={(e) => setSecurityPassword(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSecuritySubmit()
-                  }
-                }}
-                className="w-full px-4 py-3 border-2 border-gray-800 rounded text-center text-lg font-semibold mb-6 focus:outline-none focus:border-gray-900"
-                placeholder="••••••"
-                autoFocus
-              />
-              <div className="flex gap-3">
+            <h2 className="text-xl font-bold text-black mb-4">PERFORMANCE REPORT</h2>
+            <div className="rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-800 text-white">
+                  <tr>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">Department</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">Employee</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">Position</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">Report</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">Write-up</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {performanceRows.map((row, idx) => (
+                    <tr key={idx} className={idx % 2 === 1 ? 'bg-gray-50' : 'bg-white'}>
+                      <td className="px-4 py-2">
+                        <select
+                          value={row.department}
+                          onChange={e => handlePerformanceChange(idx, 'department', e.target.value)}
+                          className="w-full px-2 py-2 border border-gray-300 rounded text-sm uppercase bg-white"
+                        >
+                          <option value="">SELECT DEPARTMENT</option>
+                          {departmentOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <select
+                          value={row.employee}
+                          onChange={e => handlePerformanceChange(idx, 'employee', e.target.value)}
+                          className="w-full px-2 py-2 border border-gray-300 rounded text-sm uppercase bg-white"
+                          disabled={!row.department}
+                        >
+                          <option value="">SELECT EMPLOYEE</option>
+                          {getEmployeesByDepartment(row.department).map(emp => (
+                            <option key={emp.id} value={emp.name}>{emp.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={row.position}
+                          onChange={e => handlePerformanceChange(idx, 'position', e.target.value)}
+                          className="w-full px-2 py-2 border border-gray-300 rounded text-sm uppercase text-center bg-white"
+                          placeholder="POSITION"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={row.report}
+                          onChange={e => handlePerformanceChange(idx, 'report', e.target.value)}
+                          className="w-full px-2 py-2 border border-gray-300 rounded text-sm uppercase text-center bg-white"
+                          placeholder="REPORT"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={row.note}
+                          onChange={e => handlePerformanceChange(idx, 'note', e.target.checked)}
+                          className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          onClick={() => handleRemovePerformanceRow(idx)}
+                          className="text-red-600 hover:text-red-800 font-medium text-sm"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
                 <button
-                  onClick={handleCancelSecurity}
-                  className="flex-1 px-4 py-3 bg-gray-200 text-gray-800 border-2 border-gray-300 rounded font-semibold text-sm hover:bg-gray-300 transition"
+                  onClick={handleAddPerformanceRow}
+                  className="bg-gray-900 text-white px-6 py-2 rounded font-semibold hover:bg-black transition text-sm shadow-md"
                 >
-                  CANCEL
-                </button>
-                <button
-                  onClick={handleSecuritySubmit}
-                  className="flex-1 px-4 py-3 bg-gray-900 text-white border-2 border-gray-800 rounded font-semibold text-sm hover:bg-gray-800 transition"
-                >
-                  CONFIRM
+                  + Add Performance Report
                 </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
-    </AuthenticatedLayout>
-  )
+
+          {/* EVENT SUMMARY - moved here below PERFORMANCE REPORT */}
+          <div className="bg-white rounded p-6 mt-6">
+            <h2 className="text-lg font-bold text-black mb-2 uppercase">EVENT SUMMARY</h2>
+            <textarea
+              className="w-full min-h-[80px] border border-gray-300 rounded p-3 text-base bg-gray-50 resize-none overflow-hidden"
+              placeholder="Write a summary of the event..."
+              value={eventSummary}
+              onChange={e => {
+                setEventSummary(e.target.value);
+                const ta = e.target;
+                ta.style.height = 'auto';
+                ta.style.height = ta.scrollHeight + 'px';
+              }}
+              style={{height: 'auto', maxHeight: '600px'}}
+              rows={3}
+            />
+          </div>
+              {/* Botón de subir reporte */}
+              <div className="flex justify-center mt-8">
+                <button
+                  onClick={handleSubmitClick}
+                  className="bg-black hover:bg-gray-900 text-white font-bold py-3 px-10 rounded shadow-md text-lg transition tracking-wider"
+                >
+                  SUBMIT REPORT
+                </button>
+              </div>
+
+              {/* Modal de seguridad */}
+              {showSecurityModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+                  <div className="border border-black rounded-xl w-full max-w-xs mx-2 p-0 bg-white">
+                    <div className="flex flex-col items-center pt-6 pb-1 px-4">
+                      <h2 className="text-2xl font-black tracking-widest text-black mb-1 text-center" style={{letterSpacing:'0.18em'}}>KLIMROD CFO</h2>
+                      <span className="text-xs text-gray-400 font-semibold mb-2 tracking-widest text-center">SECURITY CODE</span>
+                    </div>
+                    <form onSubmit={e => { e.preventDefault(); handleSecuritySubmit(); }} className="flex flex-col items-center px-4 pb-6">
+                      <div className="w-full mb-6 flex justify-center">
+                        <div className="flex gap-4">
+                          {[0,1,2,3,4].map(i => (
+                            <span key={i} className="inline-block w-8 h-12 border-b-2 border-black text-3xl font-light text-center align-middle transition-colors duration-150" style={{color: securityPassword.length > i ? '#111' : '#bbb', background:'transparent', lineHeight:'3rem'}}>
+                              {securityPassword.length > i ? '•' : '_'}
+                            </span>
+                          ))}
+                        </div>
+                        <input
+                          type="password"
+                          value={securityPassword}
+                          onChange={e => {
+                            if (e.target.value.length <= 5) setSecurityPassword(e.target.value.replace(/[^0-9a-zA-Z]/g, ''));
+                          }}
+                          maxLength={5}
+                          className="absolute opacity-0 w-0 h-0"
+                          tabIndex={0}
+                          autoFocus
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full py-2 mt-1 bg-black text-white text-base font-bold rounded-full tracking-widest transition-all hover:bg-gray-900 focus:outline-none"
+                        style={{letterSpacing:'0.15em'}}
+                      >
+                        SUBMIT REPORT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowSecurityModal(false)}
+                        className="w-full py-2 mt-2 bg-transparent text-black text-sm font-semibold rounded-full border border-black tracking-widest hover:bg-gray-100 transition-all focus:outline-none"
+                        style={{letterSpacing:'0.12em'}}
+                      >
+                        CANCEL
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+          </AuthenticatedLayout>
+    );
 }

@@ -15,6 +15,27 @@
 			"command": "npx next dev",
 			"isBackground": true,
 			"group": "build"
+		},
+		{
+			"label": "Run Next.js App",
+			"type": "shell",
+			"command": "npx next dev",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run Next.js App",
+			"type": "shell",
+			"command": "npx next dev",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run Next.js App",
+			"type": "shell",
+			"command": "npx next dev",
+			"isBackground": true,
+			"group": "build"
 		}
 	]
 }

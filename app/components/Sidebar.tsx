@@ -10,6 +10,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const [expandedFI, setExpandedFI] = useState(false)
   const [expandedSales, setExpandedSales] = useState(false)
+  const [expandedHR, setExpandedHR] = useState(false)
   const [activeRestaurant, setActiveRestaurant] = useState<string>('')
   const router = useRouter()
   const { logout } = useAuth()
@@ -73,16 +74,86 @@ export default function Sidebar() {
         >
           USERS
         </Link>
-        <Link
-          href="/hr"
-          className={`block px-4 py-3 border-b-2 border-gray-800 font-semibold text-sm transition ${
-            isActive('/hr')
-              ? 'bg-gray-800 text-white'
-              : 'text-gray-200 hover:bg-gray-800'
-          }`}
-        >
-          HR
-        </Link>
+        <div className="border-b-2 border-gray-800">
+          <button
+            onClick={() => setExpandedHR(!expandedHR)}
+            className={`w-full px-4 py-3 font-semibold text-sm transition text-left ${
+              isActive('/hr')
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-200 hover:bg-gray-800'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span>HR DEPARTMENT</span>
+              <span className={`transition-transform ${expandedHR ? 'rotate-180' : ''}`}>▾</span>
+            </div>
+          </button>
+          {/* Submenu */}
+          {expandedHR && (
+            <div className="bg-gray-800">
+              <Link
+                href="/hr/application"
+                className={`block px-6 py-2 border-b border-gray-700 font-semibold text-xs transition ${
+                  pathname === '/hr/application'
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                QUICK ONBOARDING
+              </Link>
+              <Link
+                href="/hr/hiring"
+                className={`block px-6 py-2 border-b border-gray-700 font-semibold text-xs transition ${
+                  pathname === '/hr/hiring'
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                HIRING PROCESS
+              </Link>
+              <Link
+                href="/hr/timecard"
+                className={`block px-6 py-2 border-b border-gray-700 font-semibold text-xs transition ${
+                  pathname === '/hr/timecard'
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                TIME & ATTENDANCE
+              </Link>
+              <Link
+                href="/hr/gratuity"
+                className={`block px-6 py-2 border-b border-gray-700 font-semibold text-xs transition ${
+                  pathname === '/hr/gratuity'
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                GRATUITY REPORT
+              </Link>
+              <Link
+                href="/hr/payroll"
+                className={`block px-6 py-2 border-b border-gray-700 font-semibold text-xs transition ${
+                  pathname === '/hr/payroll'
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                PAYROLL SUMMARY
+              </Link>
+              <Link
+                href="/hr/directory"
+                className={`block px-6 py-2 border-b border-gray-700 font-semibold text-xs transition ${
+                  pathname === '/hr/directory'
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                STAFF DIRECTORY
+              </Link>
+            </div>
+          )}
+        </div>
 
         {/* Sales Report with expandable submenu */}
         <div className="border-b-2 border-gray-800">
